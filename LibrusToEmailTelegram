@@ -1,0 +1,260 @@
+$to = "[email1], [email2]"
+function sendMail($Subject, $Body, $To, $From ) {
+
+     Write-Host "Sending Email"
+
+     #SMTP server name
+     $smtpServer = "[smtp server name]"
+
+     #Creating a Mail object
+     $msg = new-object Net.Mail.MailMessage
+
+     #Creating SMTP server object
+     $smtp = new-object Net.Mail.SmtpClient($smtpServer)
+
+     $smtppassword = ConvertTo-SecureString "[SMTP password]" -AsPlainText -Force
+
+    $smtpCred = New-Object System.Management.Automation.PSCredential ("[SMTP USER]", $smtppassword)
+
+     #Email structure
+     $msg.From = $From
+     $msg.ReplyTo = $From
+     $msg.To.Add($To)
+     $msg.subject = $Subject
+     $msg.body = $Body
+     $smtp.Port = "587"
+     $smtp.Credentials = $smtpCred
+     $smtp.EnableSSL = $true
+
+     #Sending email
+     $smtp.Send($msg)
+ 
+}
+
+
+
+function authorize {
+    param( [string]$login, [string]$pass )
+    $form = @{
+                      'action'= "login"
+                      'login'= $login
+                      "pass" = $passwordplain
+    }
+
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;
+    $response1 = Invoke-WebRequest -Method GET  -Uri "https://api.librus.pl/OAuth/Authorization?client_id=46&response_type=code&scope=mydata" -SessionVariable CookieSession -UseBasicParsing -ErrorAction SilentlyContinue
+    $CookieSession
+    $response2 = Invoke-WebRequest -Method POST -Uri "https://api.librus.pl/OAuth/Authorization?client_id=46" -Body $form -WebSession $CookieSession -ErrorAction SilentlyContinue
+    $response3 = Invoke-WebRequest -Method GET  -Uri "https://api.librus.pl/OAuth/Authorization/Grant?client_id=46" -WebSession $CookieSession -ErrorAction SilentlyContinue
+    return $CookieSession
+}
+
+
+function unreadmessagelist {
+    param( [string]$folderId, $CookieSession )
+    $synurl = "https://synergia.librus.pl/wiadomosci"
+    $url = $synurl+"/$folderId"
+    $response = Invoke-WebRequest -Method GET  -Uri $url -WebSession $CookieSession[0] -Verbose -ErrorAction SilentlyContinue
+    $body = $response.parsedhtml.body 
+    $stretch = $body.GetElementsByClassName("decorated stretch")[0]
+    [array]$IDlist = $null
+    $TR = $stretch.getElementsByTagName("tr") | Where-Object {$_.outerHTML -like "*FONT-WEIGHT: bold*"}
+    $TR | ForEach-Object {
+        $TD = $_.getElementsByTagName("td") | Where-Object {$_.outerHTML -like "*FONT-WEIGHT: bold*"}
+        $ID = $TD[1].innerHTML.Split("/")[4]
+        $IDlist += $ID
+        }
+
+
+    return $IDlist
+    }
+
+function readmessage {
+    param( [string]$folderId, [string]$messageid, $CookieSession )
+    $synurl = "https://synergia.librus.pl/wiadomosci/1"
+
+    $url = $synurl+"/$folderId/$messageId"
+
+    $response4 = Invoke-WebRequest -Method GET  -Uri $url -WebSession $CookieSession[0] -ErrorAction SilentlyContinue
+    $body = $response4.parsedhtml.body
+    $message = "`n" + $body.GetElementsByClassName("container-message-content")[0].innertext
+    $tables = $body.getElementsByTagName('Table')
+    $innerText = $tables[0].innerText.Split("`n")
+    $nadawca = $innerText[11].Replace("Nadawca","Nadawca: ")+ "`n"
+    $temat =   $innerText[12].Replace("Temat"  ,"Temat: ")  + "`n"
+    $date =    $innerText[13].Replace("Wysłano","Wysłano: ")+ "`n"
+
+    return $nadawca + $temat + $date + $message
+}
+
+<#
+.Synopsis
+    Sends Telegram text message via Bot API
+.DESCRIPTION
+    Uses Telegram Bot API to send text message to specified Telegram chat. Several options can be specified to adjust message parameters.
+.EXAMPLE
+    $bot = "#########:xxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    $chat = "-#########"
+    Send-TelegramTextMessage -BotToken $bot -ChatID $chat -Message "Hello"
+.EXAMPLE
+    $bot = "#########:xxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    $chat = "-#########"
+
+    Send-TelegramTextMessage `
+        -BotToken $bot `
+        -ChatID $chat `
+        -Message "Hello *chat* _channel_, check out this link: [TechThoughts](http://techthoughts.info/)" `
+        -ParseMode Markdown `
+        -Preview $false `
+        -Notification $false `
+        -Verbose
+.PARAMETER BotToken
+    Use this token to access the HTTP API
+.PARAMETER ChatID
+    Unique identifier for the target chat
+.PARAMETER Message
+    Text of the message to be sent
+.PARAMETER ParseMode
+    Send Markdown or HTML, if you want Telegram apps to show bold, italic, fixed-width text or inline URLs in your bot's message. Default is Markdown.
+.PARAMETER Preview
+    Disables link previews for links in this message. Default is $false
+.PARAMETER Notification
+    Sends the message silently. Users will receive a notification with no sound. Default is $false
+.OUTPUTS
+    System.Boolean
+.NOTES
+    Author: Jake Morrison - @jakemorrison - http://techthoughts.info/
+    This works with PowerShell Versions 5.1, 6.0, 6.1
+    For a description of the Bot API, see this page: https://core.telegram.org/bots/api
+    How do I get my channel ID? Use the getidsbot https://telegram.me/getidsbot
+    How do I set up a bot and get a token? Use the BotFather https://t.me/BotFather
+.COMPONENT
+   PoshGram - https://github.com/techthoughts2/PoshGram
+.FUNCTIONALITY
+    https://core.telegram.org/bots/api#sendmessage
+    Parameters 					Type 				Required 	Description
+    chat_id 				    Integer or String 	Yes 		Unique identifier for the target chat or username of the target channel (in the format @channelusername)
+    text 						String 				Yes 		Text of the message to be sent
+    parse_mode 					String 				Optional 	Send Markdown or HTML, if you want Telegram apps to show bold, italic, fixed-width text or inline URLs in your bot's message.
+    disable_web_page_preview 	Boolean 			Optional 	Disables link previews for links in this message
+    disable_notification 		Boolean 			Optional 	Sends the message silently. Users will receive a notification with no sound.
+    reply_to_message_id 	    Integer 			Optional 	If the message is a reply, ID of the original message
+#>
+function Send-TelegramTextMessage {
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory = $true,
+            HelpMessage = '#########:xxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxx')]
+        [ValidateNotNull()]
+        [ValidateNotNullOrEmpty()]
+        [string]$BotToken = "1019145474:AAF4XdBoObQc4k2Rws14UT3RtkrSLgw-WG8",
+        [Parameter(Mandatory = $true,
+            HelpMessage = '-#########')]
+        [ValidateNotNull()]
+        [ValidateNotNullOrEmpty()]
+        [string]$ChatID = "1186614596", #you could set a Chat ID right here if you wanted
+        [Parameter(Mandatory = $true,
+            HelpMessage = 'Text of the message to be sent')]
+        [ValidateNotNull()]
+        [ValidateNotNullOrEmpty()]
+        [string]$Message,
+        [Parameter(Mandatory = $false,
+            HelpMessage = 'HTML vs Markdown for message formatting')]
+        [ValidateSet("Markdown", "HTML")]
+        [string]$ParseMode = "Markdown", #set to Markdown by default
+        [Parameter(Mandatory = $false,
+            HelpMessage = 'Disables link previews')]
+        [bool]$Preview = $false, #set to false by default
+        [Parameter(Mandatory = $false,
+            HelpMessage = 'Sends the message silently')]
+        [bool]$Notification = $false #set to false by default
+    )
+    #------------------------------------------------------------------------
+    $results = $true #assume the best
+    #------------------------------------------------------------------------
+    $payload = @{
+        "chat_id"                   = $ChatID;
+        "text"                      = $Message
+        "parse_mode"                = $ParseMode;
+        "disable_web_page_preview"  = $Preview;
+        "disable_notification"      = $Notification
+    }#payload
+    #------------------------------------------------------------------------
+    try {
+        Write-Verbose -Message "Sending message..."
+        $eval = Invoke-RestMethod `
+            -Uri ("https://api.telegram.org/bot{0}/sendMessage" -f $BotToken) `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body (ConvertTo-Json -Compress -InputObject $payload) `
+            -ErrorAction Stop
+        if (!($eval.ok -eq "True")) {
+            Write-Warning -Message "Message did not send successfully"
+            $results = $false
+        }#if_StatusDescription
+    }#try_messageSend
+    catch {
+        Write-Warning "An error was encountered sending the Telegram message:"
+        Write-Error $_
+        $results = $false
+    }#catch_messageSend
+    return $results
+    #------------------------------------------------------------------------
+}#function_Send-TelegramTextMessage
+
+function Remove-DiactricChars{
+[CmdletBinding()]
+param(
+[Parameter(ValueFromPipeline=$true)]
+[string]$ciag
+)
+begin
+    {
+    $Polish = "ą", "ć", "ę", "ł", "ń", "ó", "ś", "ż", "ź", "Ą", "Ć", "Ę", "Ł", "Ń", "Ó", "Ś", "Ż", "Ź"
+    $English = "a", "c", "e", "l", "n", "o", "s", "z", "z", "A", "C", "E", "L", "N", "O", "S", "Z", "Z"
+    $Elapsed = [System.Diagnostics.Stopwatch]::StartNew()
+    }
+process
+{
+    foreach($litera in $ciag.toCharArray())
+    {
+        for($i=0; $i -lt 19; $i++)
+        {
+            if($litera.ToString().Equals($Polish[$i]))
+            {
+             $ciag=$ciag.Replace($Polish[$i],$English[$i])
+            }
+        }
+    }
+}
+end
+    {
+    $ciag
+    }
+}
+
+$login = "[PUT login name to librus HERE 7 digits]"
+$passwordplain = "[PUT PASSWORD to librus HERE]"
+
+$CookieSession = ''
+$CookieSession = authorize -login $login -pass $passwordplain
+
+$folderId = "5" #odebrane
+Write-Host "creating list of messages"
+$list = unreadmessagelist -folderId $folderId -CookieSession $CookieSession
+if ($list.count -gt 0) {
+    foreach ($item in $list) {
+        [string]$message_obj = readmessage -folderId $folderId -messageid $item -CookieSession $CookieSession
+        [string]$message_string = Remove-DiactricChars -ciag $message_obj
+        Send-TelegramTextMessage -Message $message_string -BotToken "[BotToken]" -ChatID "[chat id]" -ParseMode Markdown
+        sendmail -To "[email recipients, divided by ,]" -From "[from email]" -Subject "Wiadomość Librus" -Body $message_obj
+        }
+    }
+
+
+
+
+
+
+
