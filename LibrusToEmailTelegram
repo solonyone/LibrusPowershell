@@ -148,12 +148,12 @@ function Send-TelegramTextMessage {
             HelpMessage = '#########:xxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxx')]
         [ValidateNotNull()]
         [ValidateNotNullOrEmpty()]
-        [string]$BotToken = "1019145474:AAF4XdBoObQc4k2Rws14UT3RtkrSLgw-WG8",
+        [string]$BotToken = "[BotToken]",
         [Parameter(Mandatory = $true,
             HelpMessage = '-#########')]
         [ValidateNotNull()]
         [ValidateNotNullOrEmpty()]
-        [string]$ChatID = "1186614596", #you could set a Chat ID right here if you wanted
+        [string]$ChatID = "[chatid]", #you could set a Chat ID right here if you wanted
         [Parameter(Mandatory = $true,
             HelpMessage = 'Text of the message to be sent')]
         [ValidateNotNull()]
